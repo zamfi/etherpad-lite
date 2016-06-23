@@ -10,6 +10,22 @@ nothing
 
 This hook proxies the functionality of jQuery's `$(document).ready` event.
 
+## aceDomLinePreProcessLineAttributes
+Called from: src/static/js/domline.js
+
+Things in context:
+
+1. domline - The current DOM line being processed
+2. cls - The class of the current block element (useful for styling)
+
+This hook is called for elements in the DOM that have the "lineMarkerAttribute" set. You can add elements into this category with the aceRegisterBlockElements hook above.  This hook is run BEFORE the numbered and ordered lists logic is applied.
+
+The return value of this hook should have the following structure:
+
+`{ preHtml: String, postHtml: String, processedMarker: Boolean }`
+
+The preHtml and postHtml values will be added to the HTML display of the element, and if processedMarker is true, the engine won't try to process it any more.
+
 ## aceDomLineProcessLineAttributes
 Called from: src/static/js/domline.js
 
@@ -18,7 +34,7 @@ Things in context:
 1. domline - The current DOM line being processed
 2. cls - The class of the current block element (useful for styling)
 
-This hook is called for elements in the DOM that have the "lineMarkerAttribute" set. You can add elements into this category with the aceRegisterBlockElements hook above.
+This hook is called for elements in the DOM that have the "lineMarkerAttribute" set. You can add elements into this category with the aceRegisterBlockElements hook above.  This hook is run AFTER the ordered and numbered lists logic is applied.
 
 The return value of this hook should have the following structure:
 
@@ -64,6 +80,22 @@ This hook is called during the attribute processing procedure, and should be use
 
 The return value for this function should be a list of classes, which will then be parsed into a valid class string.
 
+## aceAttribClasses
+Called from: src/static/js/linestylefilter.js
+
+Things in context:
+1. Attributes - Object of Attributes
+
+This hook is called when attributes are investigated on a line.  It is useful if you want to add another attribute type or property type to a pad.
+
+Example:
+```
+exports.aceAttribClasses = function(hook_name, attr, cb){
+  attr.sub = 'tag:sub';
+  cb(attr);
+}
+```
+
 ## aceGetFilterStack
 Called from: src/static/js/linestylefilter.js
 
@@ -79,7 +111,7 @@ Called from: src/static/js/ace.js
 
 Things in context: None
 
-This hook is provided to allow custom CSS files to be loaded. The return value should be an array of paths relative to the plugins directory.
+This hook is provided to allow custom CSS files to be loaded. The return value should be an array of resource urls or paths relative to the plugins directory.
 
 ## aceInitInnerdocbodyHead
 Called from: src/static/js/ace.js
@@ -128,7 +160,19 @@ Things in context:
 1. ace - the ace object that is applied to this editor.
 2. pad - the pad object of the current pad.
 
-There doesn't appear to be any example available of this particular hook being used, but it gets fired after the editor is all set up.
+## postToolbarInit
+Called from: src/static/js/pad_editbar.js
+
+Things in context:
+
+1. ace - the ace object that is applied to this editor.
+2. toolbar - Editbar instance. See below for the Editbar documentation.  
+
+Can be used to register custom actions to the toolbar.
+
+Usage examples: 
+
+* [https://github.com/tiblu/ep_authorship_toggle]()
 
 ## postTimesliderInit
 Called from: src/static/js/timeslider.js
@@ -166,10 +210,40 @@ Things in context:
 1. cc - the contentcollector object
 2. state - the current state of the change being made
 3. tname - the tag name of this node currently being processed
-4. style - the style applied to the node (probably CSS)
+4. styl - the style applied to the node (probably CSS) -- Note the typo
 5. cls - the HTML class string of the node
 
 This hook is called before the content of a node is collected by the usual methods. The cc object can be used to do a bunch of things that modify the content of the pad. See, for example, the heading1 plugin for etherpad original.
+
+E.g. if you need to apply an attribute to newly inserted characters,
+call cc.doAttrib(state, "attributeName") which results in an attribute attributeName=true.
+
+If you want to specify also a value, call cc.doAttrib(state, "attributeName::value")
+which results in an attribute attributeName=value.
+
+
+## collectContentImage
+Called from: src/static/js/contentcollector.js
+
+Things in context:
+
+1. cc - the contentcollector object
+2. state - the current state of the change being made
+3. tname - the tag name of this node currently being processed
+4. style - the style applied to the node (probably CSS)
+5. cls - the HTML class string of the node
+6. node - the node being modified
+
+This hook is called before the content of an image node is collected by the usual methods. The cc object can be used to do a bunch of things that modify the content of the pad.
+
+Example:
+
+```
+exports.collectContentImage = function(name, context){
+  context.state.lineAttributes.img = context.node.outerHTML;
+}
+
+```
 
 ## collectContentPost
 Called from: src/static/js/contentcollector.js
@@ -195,7 +269,7 @@ This hook gets called every time the client receives a message of type `name`. T
 
 `collab_client.js` has a pretty extensive list of message types, if you want to take a look.
 
-##aceStartLineAndCharForPoint-aceEndLineAndCharForPoint 
+##aceStartLineAndCharForPoint-aceEndLineAndCharForPoint
 Called from: src/static/js/ace2_inner.js
 
 Things in context:
@@ -210,7 +284,7 @@ Things in context:
 This hook is provided to allow a plugin to turn DOM node selection into [line,char] selection.
 The return value should be an array of [line,char]
 
-##aceKeyEvent 
+##aceKeyEvent
 Called from: src/static/js/ace2_inner.js
 
 Things in context:
@@ -224,7 +298,7 @@ Things in context:
 This hook is provided to allow a plugin to handle key events.
 The return value should be true if you have handled the event.
 
-##collectContentLineText 
+##collectContentLineText
 Called from: src/static/js/contentcollector.js
 
 Things in context:
@@ -237,7 +311,7 @@ Things in context:
 This hook allows you to validate/manipulate the text before it's sent to the server side.
 The return value should be the validated/manipulated text.
 
-##collectContentLineBreak 
+##collectContentLineBreak
 Called from: src/static/js/contentcollector.js
 
 Things in context:
@@ -249,7 +323,7 @@ Things in context:
 This hook is provided to allow whether the br tag should induce a new magic domline or not.
 The return value should be either true(break the line) or false.
 
-##disableAuthorColorsForThisLine 
+##disableAuthorColorsForThisLine
 Called from: src/static/js/linestylefilter.js
 
 Things in context:
@@ -277,3 +351,14 @@ Things in context:
 
 This hook is provided to allow author highlight style to be modified.
 Registered hooks should return 1 if the plugin handles highlighting.  If no plugin returns 1, the core will use the default background-based highlighting.
+
+## aceSelectionChanged
+Called from: src/static/js/ace2_inner.js
+
+Things in context:
+
+1. rep - information about where the user's cursor is
+2. documentAttributeManager - information about attributes in the document
+
+This hook allows a plugin to react to a cursor or selection change,
+perhaps to update a UI element based on the style at the cursor location.

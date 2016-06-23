@@ -3,7 +3,7 @@ var wd = require(srcFolder + "wd");
 var async = require(srcFolder + "async");
 
 var config = {
-	  host: "ondemand.saucelabs.com"
+    host: "ondemand.saucelabs.com"
   , port: 80
   , username: process.env.SAUCE_USER
   , accessKey: process.env.SAUCE_ACCESS_KEY
@@ -82,16 +82,18 @@ sauceTestWorker.push({
   , 'version'        : ''
 });
 
+/*
 // IE 8
 sauceTestWorker.push({
     'platform'       : 'Windows 2003'
   , 'browserName'    : 'iexplore'
   , 'version'        : '8'
 });
+*/
 
 // IE 9
 sauceTestWorker.push({
-    'platform'       : 'Windows 2008'
+    'platform'       : 'Windows XP'
   , 'browserName'    : 'iexplore'
   , 'version'        : '9'
 });

@@ -1,5 +1,5 @@
 /**
- * This code is mostly from the old Etherpad. Please help us to comment this code. 
+ * This code is mostly from the old Etherpad. Please help us to comment this code.
  * This helps other people to understand this code better and helps them to improve it.
  * TL;DR COMMENTS ON THIS FILE ARE HIGHLY APPRECIATED
  */
@@ -40,11 +40,9 @@ function getCollabClient(ace2editor, serverVars, initialUserInfo, options, _pad)
 
   var rev = serverVars.rev;
   var padId = serverVars.padId;
-  var globalPadId = serverVars.globalPadId;
 
   var state = "IDLE";
   var stateMessage;
-  var stateMessageSocketId;
   var channelState = "CONNECTING";
   var appLevelDisconnectReason = null;
 
@@ -52,12 +50,10 @@ function getCollabClient(ace2editor, serverVars, initialUserInfo, options, _pad)
   var initialStartConnectTime = 0;
 
   var userId = initialUserInfo.userId;
-  var socketId;
   //var socket;
   var userSet = {}; // userId -> userInfo
   userSet[userId] = initialUserInfo;
 
-  var reconnectTimes = [];
   var caughtErrors = [];
   var caughtErrorCatchers = [];
   var caughtErrorTimes = [];
@@ -85,8 +81,7 @@ function getCollabClient(ace2editor, serverVars, initialUserInfo, options, _pad)
     onServerMessage: function()
     {}
   };
-
-  if ($.browser.mozilla)
+  if (browser.firefox)
   {
     // Prevent "escape" from taking effect and canceling a comet connection;
     // doesn't work if focus is on an iframe.
@@ -156,6 +151,7 @@ function getCollabClient(ace2editor, serverVars, initialUserInfo, options, _pad)
 
     // apply msgQueue changeset.
     if (msgQueue.length != 0) {
+      var msg;
       while (msg = msgQueue.shift()) {
         var newRev = msg.newRev;
         rev=newRev;
@@ -196,7 +192,6 @@ function getCollabClient(ace2editor, serverVars, initialUserInfo, options, _pad)
         changeset: userChangesData.changeset,
         apool: userChangesData.apool
       };
-      stateMessageSocketId = socketId;
       sendMessage(stateMessage);
       sentMessage = true;
       callbacks.onInternalAction("commitPerformed");
@@ -207,17 +202,6 @@ function getCollabClient(ace2editor, serverVars, initialUserInfo, options, _pad)
       // run again in a few seconds, to detect a disconnect
       setTimeout(wrapRecordingErrors("setTimeout(handleUserChanges)", handleUserChanges), 3000);
     }
-  }
-
-  function getStats()
-  {
-    var stats = {};
-
-    stats.screen = [$(window).width(), $(window).height(), window.screen.availWidth, window.screen.availHeight, window.screen.width, window.screen.height].join(',');
-    stats.ip = serverVars.clientIp;
-    stats.useragent = serverVars.clientAgent;
-
-    return stats;
   }
 
   function setUpSocket()
@@ -290,12 +274,12 @@ function getCollabClient(ace2editor, serverVars, initialUserInfo, options, _pad)
 
       // When inInternationalComposition, msg pushed msgQueue.
       if (msgQueue.length > 0 || editor.getInInternationalComposition()) {
-        if (msgQueue.length > 0) oldRev = msgQueue[msgQueue.length - 1].newRev;
+        if (msgQueue.length > 0) var oldRev = msgQueue[msgQueue.length - 1].newRev;
         else oldRev = rev;
 
         if (newRev != (oldRev + 1))
         {
-          parent.parent.console.warn("bad message revision on NEW_CHANGES: " + newRev + " not " + (oldRev + 1));
+          window.console.warn("bad message revision on NEW_CHANGES: " + newRev + " not " + (oldRev + 1));
           // setChannelState("DISCONNECTED", "badmessage_newchanges");
           return;
         }
@@ -305,7 +289,7 @@ function getCollabClient(ace2editor, serverVars, initialUserInfo, options, _pad)
 
       if (newRev != (rev + 1))
       {
-        parent.parent.console.warn("bad message revision on NEW_CHANGES: " + newRev + " not " + (rev + 1));
+        window.console.warn("bad message revision on NEW_CHANGES: " + newRev + " not " + (rev + 1));
         // setChannelState("DISCONNECTED", "badmessage_newchanges");
         return;
       }
@@ -319,7 +303,7 @@ function getCollabClient(ace2editor, serverVars, initialUserInfo, options, _pad)
       {
         if (newRev != (msgQueue[msgQueue.length - 1].newRev + 1))
         {
-          parent.parent.console.warn("bad message revision on ACCEPT_COMMIT: " + newRev + " not " + (msgQueue[msgQueue.length - 1][0] + 1));
+          window.console.warn("bad message revision on ACCEPT_COMMIT: " + newRev + " not " + (msgQueue[msgQueue.length - 1][0] + 1));
           // setChannelState("DISCONNECTED", "badmessage_acceptcommit");
           return;
         }
@@ -329,7 +313,7 @@ function getCollabClient(ace2editor, serverVars, initialUserInfo, options, _pad)
 
       if (newRev != (rev + 1))
       {
-        parent.parent.console.warn("bad message revision on ACCEPT_COMMIT: " + newRev + " not " + (rev + 1));
+        window.console.warn("bad message revision on ACCEPT_COMMIT: " + newRev + " not " + (rev + 1));
         // setChannelState("DISCONNECTED", "badmessage_acceptcommit");
         return;
       }
@@ -367,7 +351,7 @@ function getCollabClient(ace2editor, serverVars, initialUserInfo, options, _pad)
         msg.userInfo.colorId = initialUserInfo.globalUserColor;
       }
 
-      
+
       if (userSet[id])
       {
         userSet[id] = userInfo;
@@ -421,7 +405,7 @@ function getCollabClient(ace2editor, serverVars, initialUserInfo, options, _pad)
       $("#chatloadmessagesball").css("display", "none");
 
       // there are less than 100 messages or we reached the top
-      if(chat.historyPointer <= 0) 
+      if(chat.historyPointer <= 0)
         $("#chatloadmessagesbutton").css("display", "none");
       else // there are still more messages, re-show the load-button
         $("#chatloadmessagesbutton").css("display", "block");
@@ -429,6 +413,12 @@ function getCollabClient(ace2editor, serverVars, initialUserInfo, options, _pad)
     else if (msg.type == "SERVER_MESSAGE")
     {
       callbacks.onServerMessage(msg.payload);
+    }
+
+    //HACKISH: User messages do not have "payload" but "userInfo", so that all "handleClientMessage_USER_" hooks would work, populate payload
+    //FIXME: USER_* messages to have "payload" property instead of "userInfo", seems like a quite a big work
+    if(msg.type.indexOf("USER_") > -1) {
+      msg.payload = msg.userInfo;
     }
     hooks.callAll('handleClientMessage_' + msg.type, {payload: msg.payload});
   }
@@ -457,7 +447,7 @@ function getCollabClient(ace2editor, serverVars, initialUserInfo, options, _pad)
     {
       colorId = clientVars.colorPalette[colorId];
     }
-    
+
     var cssColor = colorId;
     if (inactive)
     {
@@ -503,16 +493,6 @@ function getCollabClient(ace2editor, serverVars, initialUserInfo, options, _pad)
       channelState = newChannelState;
       callbacks.onChannelStateChange(channelState, moreInfo);
     }
-  }
-
-  function keys(obj)
-  {
-    var array = [];
-    $.each(obj, function(k, v)
-    {
-      array.push(k);
-    });
-    return array;
   }
 
   function valuesArray(obj)
@@ -593,7 +573,6 @@ function getCollabClient(ace2editor, serverVars, initialUserInfo, options, _pad)
     {
       obj.committedChangeset = stateMessage.changeset;
       obj.committedChangesetAPool = stateMessage.apool;
-      obj.committedChangesetSocketId = stateMessageSocketId;
       editor.applyPreparedChangesetToBase();
     }
     var userChangesData = editor.prepareUserChangeset();

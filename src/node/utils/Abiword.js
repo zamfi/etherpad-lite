@@ -18,7 +18,6 @@
  * limitations under the License.
  */
  
-var util  = require('util');
 var spawn = require('child_process').spawn;
 var async = require("async");
 var settings = require("./Settings");
@@ -143,7 +142,7 @@ else
   //Queue with the converts we have to do
   var queue = async.queue(doConvertTask, 1);
   exports.convertFile = function(srcFile, destFile, type, callback)
-  {	
+  {
     queue.push({"srcFile": srcFile, "destFile": destFile, "type": type, "callback": callback});
   };
 }

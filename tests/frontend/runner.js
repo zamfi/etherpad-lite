@@ -161,11 +161,6 @@ $(function(){
     }
   }
 
-  //allow cross iframe access
-  if ((!$.browser.msie) && (!($.browser.mozilla && $.browser.version.indexOf("1.8.") == 0))) {
-    document.domain = document.domain; // for comet
-  }
-
   //http://stackoverflow.com/questions/1403888/get-url-parameter-with-jquery
   var getURLParameter = function (name) {
     return decodeURI(
@@ -188,14 +183,14 @@ $(function(){
 
   //initalize the test helper
   helper.init(function(){
-	  //configure and start the test framework
+    //configure and start the test framework
     var grep = getURLParameter("grep");
     if(grep != "null"){
       mocha.grep(grep);
     }
 
-	  mocha.ignoreLeaks();
-		
+    mocha.ignoreLeaks();
+
     mocha.reporter(WebdriverAndHtmlReporter(mocha._reporter));
 
     mocha.run();

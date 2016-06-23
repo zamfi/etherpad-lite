@@ -101,8 +101,12 @@ PadDiff.prototype._createClearStartAtext = function(rev, callback){
        return callback(err);
      }
    
+     try {
      //apply the clearAuthorship changeset
      var newAText = Changeset.applyToAText(changeset, atext, self._pad.pool);
+     } catch(err) {
+      return callback(err)
+     }
      
      callback(null, newAText);
    });
@@ -209,10 +213,14 @@ PadDiff.prototype._createDiffAtext = function(callback) {
         if(superChangeset){
           var deletionChangeset = self._createDeletionChangeset(superChangeset,atext,self._pad.pool);
         
-          //apply the superChangeset, which includes all addings
-          atext = Changeset.applyToAText(superChangeset,atext,self._pad.pool);
-          //apply the deletionChangeset, which adds a deletions
-          atext = Changeset.applyToAText(deletionChangeset,atext,self._pad.pool);
+          try {
+            //apply the superChangeset, which includes all addings
+            atext = Changeset.applyToAText(superChangeset,atext,self._pad.pool);
+            //apply the deletionChangeset, which adds a deletions
+            atext = Changeset.applyToAText(deletionChangeset,atext,self._pad.pool);
+          } catch(err) {
+           return callback(err)
+          }
         }      
  
         callback(err, atext);
@@ -331,27 +339,11 @@ PadDiff.prototype._createDeletionChangeset = function(cs, startAText, apool) {
     }
   }
  
-  function lines_length() {
-    if ((typeof lines.length) == "number") {
-      return lines.length;
-    } else {
-      return lines.length();
-    }
-  }
- 
   function alines_get(idx) {
     if (alines.get) {
       return alines.get(idx);
     } else {
       return alines[idx];
-    }
-  }
- 
-  function alines_length() {
-    if ((typeof alines.length) == "number") {
-      return alines.length;
-    } else {
-      return alines.length();
     }
   }
  

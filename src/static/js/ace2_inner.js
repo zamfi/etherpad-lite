@@ -21,6 +21,17 @@
  */
 var _, $, jQuery, plugins, Ace2Common;
 
+var browser = require('./browser');
+if(browser.msie){
+  // Honestly fuck IE royally.
+  // Basically every hack we have since V11 causes a problem
+  if(parseInt(browser.version) >= 11){
+    delete browser.msie;
+    browser.chrome = true;
+    browser.modernIE = true;
+  }
+}
+
 Ace2Common = require('./ace2_common');
 
 plugins = require('ep_etherpad-lite/static/js/pluginfw/client_plugins');
@@ -28,15 +39,13 @@ $ = jQuery = require('./rjquery').$;
 _ = require("./underscore");
 
 var isNodeText = Ace2Common.isNodeText,
-  browser = $.browser,
   getAssoc = Ace2Common.getAssoc,
   setAssoc = Ace2Common.setAssoc,
   isTextNode = Ace2Common.isTextNode,
   binarySearchInfinite = Ace2Common.binarySearchInfinite,
   htmlPrettyEscape = Ace2Common.htmlPrettyEscape,
   noop = Ace2Common.noop;
-  var hooks = require('./pluginfw/hooks');
-
+var hooks = require('./pluginfw/hooks');
 
 function Ace2Inner(){
 
@@ -51,7 +60,6 @@ function Ace2Inner(){
   var linestylefilter = require('./linestylefilter').linestylefilter;
   var SkipList = require('./skiplist');
   var undoModule = require('./undomodule').undoModule;
-  var makeVirtualLineView = require('./virtual_lines').makeVirtualLineView;
   var AttributeManager = require('./AttributeManager');
 
   var DEBUG = false; //$$ build script replaces the string "var DEBUG=true;//$$" with "var DEBUG=false;"
@@ -59,7 +67,7 @@ function Ace2Inner(){
   var isSetUp = false;
 
   var THE_TAB = '    '; //4
-  var MAX_LIST_LEVEL = 8;
+  var MAX_LIST_LEVEL = 16;
 
   var LINE_NUMBER_PADDING_RIGHT = 4;
   var LINE_NUMBER_PADDING_LEFT = 4;
@@ -79,7 +87,6 @@ function Ace2Inner(){
   iframe.ace_outerWin = null; // prevent IE 6 memory leak
   var sideDiv = iframe.nextSibling;
   var lineMetricsDiv = sideDiv.nextSibling;
-  var overlaysdiv = lineMetricsDiv.nextSibling;
   initLineNumbers();
 
   var outsideKeyDown = noop;
@@ -102,13 +109,13 @@ function Ace2Inner(){
     apool: new AttribPool()
   };
 
-  // lines, alltext, alines, and DOM are set up in setup()
+  // lines, alltext, alines, and DOM are set up in init()
   if (undoModule.enabled)
   {
     undoModule.apool = rep.apool;
   }
 
-  var root, doc; // set in setup()
+  var root, doc; // set in init()
   var isEditable = true;
   var doesWrap = true;
   var hasLineNumbers = true;
@@ -153,7 +160,6 @@ function Ace2Inner(){
   // only calling it in error cases or while debugging.
   var dmesg = noop;
   window.dmesg = noop;
-
 
   var scheduler = parent; // hack for opera required
 
@@ -344,19 +350,6 @@ function Ace2Inner(){
       spanStyle.paddingTop = extraTodding + "px";
       spanStyle.paddingBottom = extraBodding + "px";
     }
-  }
-
-  function boldColorFromColor(lightColorCSS)
-  {
-    var color = colorutils.css2triple(lightColorCSS);
-
-    // amp up the saturation to full
-    color = colorutils.saturate(color);
-
-    // normalize brightness based on luminosity
-    color = colorutils.scaleColor(color, 0, 0.5 / colorutils.luminosity(color));
-
-    return colorutils.triple2css(color);
   }
 
   function fadeColor(colorCSS, fadeFrac)
@@ -551,22 +544,6 @@ function Ace2Inner(){
   }
   editorInfo.ace_inCallStackIfNecessary = inCallStackIfNecessary;
 
-  function recolorLineByKey(key)
-  {
-    if (rep.lines.containsKey(key))
-    {
-      var offset = rep.lines.offsetOfKey(key);
-      var width = rep.lines.atKey(key).width;
-      recolorLinesInRange(offset, offset + width);
-    }
-  }
-
-  function getLineKeyForOffset(charOffset)
-  {
-    return rep.lines.atOffset(charOffset).key;
-  }
-
-
   function dispose()
   {
     disposed = true;
@@ -628,6 +605,16 @@ function Ace2Inner(){
         fixView();
       });
     }, 0);
+
+    // Chrome can't handle the truth..  If CSS rule white-space:pre-wrap
+    // is true then any paste event will insert two lines..
+    // Sadly this will mean you get a walking Caret in Chrome when clicking on a URL
+    // So this has to be set to pre-wrap ;(
+    // We need to file a bug w/ the Chromium team.
+    if(browser.chrome){
+      $("#innerdocbody").addClass("noprewrap");
+    }
+
   }
 
   function setStyled(newVal)
@@ -1173,34 +1160,6 @@ function Ace2Inner(){
   }
   editorInfo.ace_fastIncorp = fastIncorp;
 
-  function incorpIfQuick()
-  {
-    var me = incorpIfQuick;
-    var failures = (me.failures || 0);
-    if (failures < 5)
-    {
-      var isTimeUp = newTimeLimit(40);
-      var madeChanges = incorporateUserChanges(isTimeUp);
-      if (isTimeUp())
-      {
-        me.failures = failures + 1;
-      }
-      return true;
-    }
-    else
-    {
-      var skipCount = (me.skipCount || 0);
-      skipCount++;
-      if (skipCount == 20)
-      {
-        skipCount = 0;
-        me.failures = 0;
-      }
-      me.skipCount = skipCount;
-    }
-    return false;
-  }
-
   var idleWorkTimer = makeIdleAction(function()
   {
 
@@ -1407,7 +1366,7 @@ function Ace2Inner(){
     // (from how it looks in our representation) and record them in a way
     // that can be used to "normalize" the document (apply the changes to our
     // representation, and put the DOM in a canonical form).
-    //top.console.log("observeChangesAroundNode(%o)", node);
+    // top.console.log("observeChangesAroundNode(%o)", node);
     var cleanNode;
     var hasAdjacentDirtyness;
     if (!isNodeDirty(node))
@@ -1659,7 +1618,7 @@ function Ace2Inner(){
 
         if (linesWrapped > 0)
         {
-          if(!browser.ie){
+          if(!browser.msie){
             // chrome decides in it's infinite wisdom that its okay to put the browsers visisble window in the middle of the span
             // an outcome of this is that the first chars of the string are no longer visible to the user..  Yay chrome..
             // Move the browsers visible area to the left hand side of the span
@@ -1727,7 +1686,7 @@ function Ace2Inner(){
     {
       //var id = n.uniqueId();
       // parent of n may not be "root" in IE due to non-tree-shaped DOM (wtf)
-      n.parentNode.removeChild(n);
+      if(n.parentNode) n.parentNode.removeChild(n);
 
       //dmesg(htmlPrettyEscape(htmlForRemovedChild(n)));
       //console.log("removed: "+id);
@@ -1805,13 +1764,6 @@ function Ace2Inner(){
     p.end("END");
 
     return domChanges;
-  }
-
-  function htmlForRemovedChild(n)
-  {
-    var div = doc.createElement("DIV");
-    div.appendChild(n);
-    return div.innerHTML;
   }
 
   var STYLE_ATTRIBS = {
@@ -1942,7 +1894,11 @@ function Ace2Inner(){
       var prevLine = rep.lines.prev(thisLine);
       var prevLineText = prevLine.text;
       var theIndent = /^ *(?:)/.exec(prevLineText)[0];
-      if (/[\[\(\:\{]\s*$/.exec(prevLineText)) theIndent += THE_TAB;
+      var shouldIndent = parent.parent.clientVars.indentationOnNewLine;
+      if (shouldIndent && /[\[\(\:\{]\s*$/.exec(prevLineText))
+      {
+        theIndent += THE_TAB;
+      }
       var cs = Changeset.builder(rep.lines.totalWidth()).keep(
       rep.lines.offsetOfIndex(lineNum), lineNum).insert(
       theIndent, [
@@ -1971,6 +1927,11 @@ function Ace2Inner(){
     if (charsLeft === 0)
     {
       var index = 0;
+
+      if (browser.msie && parseInt(browser.version) >= 11) {
+        browser.msie = false; // Temp fix to resolve enter and backspace issues..
+        // Note that this makes MSIE behave like modern browsers..
+      }
       if (browser.msie && line == (rep.lines.length() - 1) && lineNode.childNodes.length === 0)
       {
         // best to stay at end of last empty div in IE
@@ -2025,7 +1986,11 @@ function Ace2Inner(){
 
   function nodeText(n)
   {
-    return n.innerText || n.textContent || n.nodeValue || '';
+      if (browser.msie) {
+	  return n.innerText;
+      } else {
+	  return n.textContent || n.nodeValue || '';
+      }
   }
 
   function getLineAndCharForPoint(point)
@@ -2372,6 +2337,83 @@ function Ace2Inner(){
   }
   editorInfo.ace_setAttributeOnSelection = setAttributeOnSelection;
 
+
+  function getAttributeOnSelection(attributeName, prevChar){
+    if (!(rep.selStart && rep.selEnd)) return
+    var isNotSelection = (rep.selStart[0] == rep.selEnd[0] && rep.selEnd[1] === rep.selStart[1]);
+    if(isNotSelection){
+      if(prevChar){
+        // If it's not the start of the line
+        if(rep.selStart[1] !== 0){
+          rep.selStart[1]--;
+        }
+      }
+    }
+
+    var withIt = Changeset.makeAttribsString('+', [
+      [attributeName, 'true']
+    ], rep.apool);
+    var withItRegex = new RegExp(withIt.replace(/\*/g, '\\*') + "(\\*|$)");
+    function hasIt(attribs)
+    {
+      return withItRegex.test(attribs);
+    }
+
+    return rangeHasAttrib(rep.selStart, rep.selEnd)
+
+    function rangeHasAttrib(selStart, selEnd) {
+      // if range is collapsed -> no attribs in range
+      if(selStart[1] == selEnd[1] && selStart[0] == selEnd[0]) return false
+
+      if(selStart[0] != selEnd[0]) { // -> More than one line selected
+        var hasAttrib = true
+
+        // from selStart to the end of the first line
+        hasAttrib = hasAttrib && rangeHasAttrib(selStart, [selStart[0], rep.lines.atIndex(selStart[0]).text.length])
+
+        // for all lines in between
+        for(var n=selStart[0]+1; n < selEnd[0]; n++) {
+          hasAttrib = hasAttrib && rangeHasAttrib([n, 0], [n, rep.lines.atIndex(n).text.length])
+        }
+
+        // for the last, potentially partial, line
+        hasAttrib = hasAttrib && rangeHasAttrib([selEnd[0], 0], [selEnd[0], selEnd[1]])
+
+        return hasAttrib
+      }
+
+      // Logic tells us we now have a range on a single line
+
+      var lineNum = selStart[0]
+        , start = selStart[1]
+        , end = selEnd[1]
+        , hasAttrib = true
+
+      // Iterate over attribs on this line
+
+      var opIter = Changeset.opIterator(rep.alines[lineNum])
+        , indexIntoLine = 0
+
+      while (opIter.hasNext()) {
+        var op = opIter.next();
+        var opStartInLine = indexIntoLine;
+        var opEndInLine = opStartInLine + op.chars;
+        if (!hasIt(op.attribs)) {
+          // does op overlap selection?
+          if (!(opEndInLine <= start || opStartInLine >= end)) {
+            hasAttrib = false; // since it's overlapping but hasn't got the attrib -> range hasn't got it
+            break;
+          }
+        }
+        indexIntoLine = opEndInLine;
+      }
+
+      return hasAttrib
+    }
+  }
+
+  editorInfo.ace_getAttributeOnSelection = getAttributeOnSelection;
+
   function toggleAttributeOnSelection(attributeName)
   {
     if (!(rep.selStart && rep.selEnd)) return;
@@ -2394,6 +2436,9 @@ function Ace2Inner(){
       var opIter = Changeset.opIterator(rep.alines[n]);
       var indexIntoLine = 0;
       var selectionStartInLine = 0;
+      if (documentAttributeManager.lineHasMarker(n)) {
+        selectionStartInLine = 1; // ignore "*" used as line marker
+      }
       var selectionEndInLine = rep.lines.atIndex(n).text.length; // exclude newline
       if (n == selStartLine)
       {
@@ -2865,6 +2910,12 @@ function Ace2Inner(){
       rep.selFocusAtStart = newSelFocusAtStart;
       currentCallStack.repChanged = true;
 
+      hooks.callAll('aceSelectionChanged', {
+        rep: rep,
+        callstack: currentCallStack,
+        documentAttributeManager: documentAttributeManager,
+      });
+
       return true;
       //console.log("selStart: %o, selEnd: %o, focusAtStart: %s", rep.selStart, rep.selEnd,
       //String(!!rep.selFocusAtStart));
@@ -2931,7 +2982,6 @@ function Ace2Inner(){
       {
         return "";
       };
-
       return result;
     }
     else
@@ -3275,6 +3325,15 @@ function Ace2Inner(){
     return [rep.lines.offsetOfIndex(lineRange[0]), rep.lines.offsetOfIndex(lineRange[1])];
   }
 
+  function handleCut(evt)
+  {
+    inCallStackIfNecessary("handleCut", function()
+    {
+      doDeleteKey(evt);
+    });
+    return true;
+  }
+
   function handleClick(evt)
   {
     inCallStackIfNecessary("handleClick", function()
@@ -3329,7 +3388,7 @@ function Ace2Inner(){
     if (listType)
     {
       var text = rep.lines.atIndex(lineNum).text;
-      listType = /([a-z]+)([12345678])/.exec(listType);
+      listType = /([a-z]+)([0-9]+)/.exec(listType);
       var type  = listType[1];
       var level = Number(listType[2]);
 
@@ -3347,7 +3406,7 @@ function Ace2Inner(){
           renumberList(lineNum + 1);//trigger renumbering of list that may be right after
         }
       }
-      else if (lineNum + 1 < rep.lines.length())
+      else if (lineNum + 1 <= rep.lines.length())
       {
         performDocumentReplaceSelection('\n');
         setLineListType(lineNum + 1, type+level);
@@ -3381,7 +3440,7 @@ function Ace2Inner(){
       var level = 0;
       if (listType)
       {
-        listType = /([a-z]+)([12345678])/.exec(listType);
+        listType = /([a-z]+)([0-9]+)/.exec(listType);
         if (listType)
         {
           t = listType[1];
@@ -3555,7 +3614,7 @@ function Ace2Inner(){
     // On Mac and Linux, move right moves to end of word and move left moves to start;
     // on Windows, always move to start of word.
     // On Windows, Firefox and IE disagree on whether to stop for punctuation (FF says no).
-    if (browser.windows && forwardNotBack)
+    if (browser.msie && forwardNotBack)
     {
       while ((!isDone()) && isWordChar(nextChar()))
       {
@@ -3589,12 +3648,28 @@ function Ace2Inner(){
     var charCode = evt.charCode;
     var keyCode = evt.keyCode;
     var which = evt.which;
+    var altKey = evt.altKey;
+    var shiftKey = evt.shiftKey;
 
-    // prevent ESC key
-    if (keyCode == 27)
-    {
-      evt.preventDefault();
-      return;
+    // Is caret potentially hidden by the chat button?
+    var myselection = document.getSelection(); // get the current caret selection
+    var caretOffsetTop = myselection.focusNode.parentNode.offsetTop | myselection.focusNode.offsetTop; // get the carets selection offset in px IE 214
+
+    if(myselection.focusNode.wholeText){ // Is there any content?  If not lineHeight will report wrong..
+      var lineHeight = myselection.focusNode.parentNode.offsetHeight; // line height of populated links
+    }else{
+      var lineHeight = myselection.focusNode.offsetHeight; // line height of blank lines
+    }
+
+    var heightOfChatIcon = parent.parent.$('#chaticon').height(); // height of the chat icon button
+    lineHeight = (lineHeight *2) + heightOfChatIcon;
+    var viewport = getViewPortTopBottom();
+    var viewportHeight = viewport.bottom - viewport.top - lineHeight;
+    var relCaretOffsetTop = caretOffsetTop - viewport.top; // relative Caret Offset Top to viewport
+    if (viewportHeight < relCaretOffsetTop){
+      parent.parent.$("#chaticon").css("opacity",".3"); // make chaticon opacity low when user types near it
+    }else{
+      parent.parent.$("#chaticon").css("opacity","1"); // make chaticon opacity back to full (so fully visible)
     }
 
     //dmesg("keyevent type: "+type+", which: "+which);
@@ -3610,11 +3685,9 @@ function Ace2Inner(){
     if (keyCode == 13 && browser.opera && (type == "keypress")){
       return; // This stops double enters in Opera but double Tabs still show on single tab keypress, adding keyCode == 9 to this doesn't help as the event is fired twice
     }
-
     var specialHandled = false;
     var isTypeForSpecialKey = ((browser.msie || browser.safari || browser.chrome) ? (type == "keydown") : (type == "keypress"));
     var isTypeForCmdKey = ((browser.msie || browser.safari || browser.chrome) ? (type == "keydown") : (type == "keypress"));
-
     var stopped = false;
 
     inCallStackIfNecessary("handleKeyEvent", function()
@@ -3627,6 +3700,11 @@ function Ace2Inner(){
           evt.preventDefault();
           stopped = true;
         }
+      }
+      else if (evt.key === "Dead"){
+        // If it's a dead key we don't want to do any Etherpad behavior.
+        stopped = true;
+        return true;
       }
       else if (type == "keydown")
       {
@@ -3641,7 +3719,107 @@ function Ace2Inner(){
           documentAttributeManager: documentAttributeManager,
           evt:evt
         });
-        specialHandled = (specialHandledInHook&&specialHandledInHook.length>0)?specialHandledInHook[0]:specialHandled;
+
+        // if any hook returned true, set specialHandled with true
+        if (specialHandledInHook) {
+          specialHandled = _.contains(specialHandledInHook, true);
+        }
+
+        if ((!specialHandled) && altKey && isTypeForSpecialKey && keyCode == 120){
+          // Alt F9 focuses on the File Menu and/or editbar.
+          // Note that while most editors use Alt F10 this is not desirable
+          // As ubuntu cannot use Alt F10....
+          // Focus on the editbar. -- TODO: Move Focus back to previous state (we know it so we can use it)
+          var firstEditbarElement = parent.parent.$('#editbar').children("ul").first().children().first().children().first().children().first();
+          $(this).blur();
+          firstEditbarElement.focus();
+          evt.preventDefault();
+        }
+        if ((!specialHandled) && altKey && keyCode == 67 && type === "keydown"){
+          // Alt c focuses on the Chat window
+          $(this).blur();
+          parent.parent.chat.show();
+          parent.parent.$("#chatinput").focus();
+          evt.preventDefault();
+        }
+        if ((!specialHandled) && evt.ctrlKey && shiftKey && keyCode == 50 && type === "keydown"){
+          // Control-Shift-2 shows a gritter popup showing a line author
+          var lineNumber = rep.selEnd[0];
+          var alineAttrs = rep.alines[lineNumber];
+          var apool = rep.apool;
+
+          // TODO: support selection ranges
+          // TODO: Still work when authorship colors have been cleared
+          // TODO: i18n
+          // TODO: There appears to be a race condition or so.
+
+          var author = null;
+          if (alineAttrs) {
+            var authors = [];
+            var authorNames = [];
+            var opIter = Changeset.opIterator(alineAttrs);
+
+            while (opIter.hasNext()){
+              var op = opIter.next();
+              authorId = Changeset.opAttributeValue(op, 'author', apool);
+
+              // Only push unique authors and ones with values
+              if(authors.indexOf(authorId) === -1 && authorId !== ""){
+                authors.push(authorId);
+              }
+
+            }
+
+          }
+
+          // No author information is available IE on a new pad.
+          if(authors.length === 0){
+            var authorString = "No author information is available";
+          }
+          else{
+            // Known authors info, both current and historical
+            var padAuthors = parent.parent.pad.userList();
+            var authorObj = {};
+            authors.forEach(function(authorId){
+              padAuthors.forEach(function(padAuthor){
+                // If the person doing the lookup is the author..
+                if(padAuthor.userId === authorId){
+                  if(parent.parent.clientVars.userId === authorId){
+                    authorObj = {
+                      name: "Me"
+                    }
+                  }else{
+                    authorObj = padAuthor;
+                  }
+                }
+              });
+              if(!authorObj){
+                author = "Unknown";
+                return;
+              }
+              author = authorObj.name;
+              if(!author) author = "Unknown";
+              authorNames.push(author);
+            })
+          }
+          if(authors.length === 1){
+            var authorString = "The author of this line is " + authorNames;
+          }
+          if(authors.length > 1){
+            var authorString = "The authors of this line are " + authorNames.join(" & ");
+	  }
+
+          parent.parent.$.gritter.add({
+            // (string | mandatory) the heading of the notification
+            title: 'Line Authors',
+            // (string | mandatory) the text inside the notification
+            text: authorString,
+            // (bool | optional) if you want it to fade out on its own or just sit there
+            sticky: false,
+            // (int | optional) the time you want it to be alive for before fading out
+            time: '4000'
+          });
+        }
         if ((!specialHandled) && isTypeForSpecialKey && keyCode == 8)
         {
           // "delete" key; in mozilla, if we're at the beginning of a line, normalize now,
@@ -3670,7 +3848,16 @@ function Ace2Inner(){
           }, 0);
           specialHandled = true;
         }
-        if ((!specialHandled) && isTypeForCmdKey && String.fromCharCode(which).toLowerCase() == "s" && (evt.metaKey || evt.ctrlKey)) /* Do a saved revision on ctrl S */
+        if ((!specialHandled) && isTypeForSpecialKey && keyCode == 27)
+        {
+          // prevent esc key;
+          // in mozilla versions 14-19 avoid reconnecting pad.
+
+          fastIncorp(4);
+          evt.preventDefault();
+          specialHandled = true;
+        }
+        if ((!specialHandled) && isTypeForCmdKey && String.fromCharCode(which).toLowerCase() == "s" && (evt.metaKey || evt.ctrlKey) && !evt.altKey) /* Do a saved revision on ctrl S */
         {
           evt.preventDefault();
           var originalBackground = parent.parent.$('#revisionlink').css("background")
@@ -3737,6 +3924,36 @@ function Ace2Inner(){
           toggleAttributeOnSelection('underline');
           specialHandled = true;
         }
+        if ((!specialHandled) && isTypeForCmdKey && String.fromCharCode(which).toLowerCase() == "5" && (evt.metaKey || evt.ctrlKey) && evt.altKey !== true)
+        {
+          // cmd-5 (strikethrough)
+          fastIncorp(13);
+          evt.preventDefault();
+          toggleAttributeOnSelection('strikethrough');
+          specialHandled = true;
+        }
+        if ((!specialHandled) && isTypeForCmdKey && String.fromCharCode(which).toLowerCase() == "l" && (evt.metaKey || evt.ctrlKey) && evt.shiftKey)
+        {
+          // cmd-shift-L (unorderedlist)
+          fastIncorp(9);
+          evt.preventDefault();
+          doInsertUnorderedList()
+          specialHandled = true;
+	}
+        if ((!specialHandled) && isTypeForCmdKey && (String.fromCharCode(which).toLowerCase() == "n" || String.fromCharCode(which) == 1) && (evt.metaKey || evt.ctrlKey) && evt.shiftKey)
+        {
+          // cmd-shift-N (orderedlist)
+          fastIncorp(9);
+          evt.preventDefault();
+          doInsertOrderedList()
+          specialHandled = true;
+	}
+        if ((!specialHandled) && isTypeForCmdKey && String.fromCharCode(which).toLowerCase() == "c" && (evt.metaKey || evt.ctrlKey) && evt.shiftKey) {
+          // cmd-shift-C (clearauthorship)
+          fastIncorp(9);
+          evt.preventDefault();
+          CMDS.clearauthorship();
+        }
         if ((!specialHandled) && isTypeForCmdKey && String.fromCharCode(which).toLowerCase() == "h" && (evt.ctrlKey))
         {
           // cmd-H (backspace)
@@ -3746,7 +3963,7 @@ function Ace2Inner(){
           specialHandled = true;
         }
         if((evt.which == 36 && evt.ctrlKey == true)){ setScrollY(0); } // Control Home send to Y = 0
-        if((evt.which == 33 || evt.which == 34) && type == 'keydown'){
+        if((evt.which == 33 || evt.which == 34) && type == 'keydown' && !evt.ctrlKey){
 
           evt.preventDefault(); // This is required, browsers will try to do normal default behavior on page up / down and the default behavior SUCKS
 
@@ -3788,8 +4005,11 @@ function Ace2Inner(){
             }
             updateBrowserSelectionFromRep();
             var myselection = document.getSelection(); // get the current caret selection, can't use rep. here because that only gives us the start position not the current
-            var caretOffsetTop = myselection.focusNode.parentNode.offsetTop | myselection.focusNode.offsetTop; // get the carets selection offset in px IE 214
-            // top.console.log(caretOffsetTop);
+            var caretOffsetTop = myselection.focusNode.parentNode.offsetTop || myselection.focusNode.offsetTop; // get the carets selection offset in px IE 214
+
+            // sometimes the first selection is -1 which causes problems (Especially with ep_page_view)
+            // so use focusNode.offsetTop value.
+            if(caretOffsetTop === -1) caretOffsetTop = myselection.focusNode.offsetTop;
             setScrollY(caretOffsetTop); // set the scrollY offset of the viewport on the document
 
           }, 200);
@@ -3797,7 +4017,7 @@ function Ace2Inner(){
         /* Attempt to apply some sanity to cursor handling in Chrome after a copy / paste event
            We have to do this the way we do because rep. doesn't hold the value for keyheld events IE if the user
            presses and holds the arrow key ..  Sorry if this is ugly, blame Chrome's weird handling of viewports after new content is added*/
-        if((evt.which == 37 || evt.which == 38 || evt.which == 39 || evt.which == 40) && $.browser.chrome){
+        if((evt.which == 37 || evt.which == 38 || evt.which == 39 || evt.which == 40) && browser.chrome){
           var viewport = getViewPortTopBottom();
           var myselection = document.getSelection(); // get the current caret selection, can't use rep. here because that only gives us the start position not the current
           var caretOffsetTop = myselection.focusNode.parentNode.offsetTop || myselection.focusNode.offsetTop; // get the carets selection offset in px IE 214
@@ -3814,7 +4034,7 @@ function Ace2Inner(){
             // top.console.log(caretOffsetTop, viewport.top, caretOffsetTopBottom, viewport.bottom);
             var caretIsNotVisible = (caretOffsetTop < viewport.top || caretOffsetTopBottom >= viewport.bottom); // Is the Caret Visible to the user?
             // Expect some weird behavior caretOffsetTopBottom is greater than viewport.bottom on a keypress down
-            var offsetTopSamePlace = caretOffsetTop == viewport.top; // sometimes moving key left & up leaves the caret at the same point as the viewport.top, technically the caret is visible but it's not fully visible so we should move to it 
+            var offsetTopSamePlace = caretOffsetTop == viewport.top; // sometimes moving key left & up leaves the caret at the same point as the viewport.top, technically the caret is visible but it's not fully visible so we should move to it
             if(offsetTopSamePlace && (evt.which == 37 || evt.which == 38)){
                 var newY = caretOffsetTop;
                 setScrollY(newY);
@@ -3831,10 +4051,10 @@ function Ace2Inner(){
                 // only move the viewport if we're at the bottom of the viewport, if we hit down any other time the viewport shouldn't change
                 // NOTE: This behavior only fires if Chrome decides to break the page layout after a paste, it's annoying but nothing I can do
                 var selection = getSelection();
-                top.console.log("line #", rep.selStart[0]); // the line our caret is on
-                top.console.log("firstvisible", visibleLineRange[0]); // the first visiblel ine
-                top.console.log("lastVisible", visibleLineRange[1]); // the last visible line
-                top.console.log(rep.selStart[0], visibleLineRange[1], rep.selStart[0], visibleLineRange[0]);
+                // top.console.log("line #", rep.selStart[0]); // the line our caret is on
+                // top.console.log("firstvisible", visibleLineRange[0]); // the first visiblel ine
+                // top.console.log("lastVisible", visibleLineRange[1]); // the last visible line
+                // top.console.log(rep.selStart[0], visibleLineRange[1], rep.selStart[0], visibleLineRange[0]);
                 var newY = viewport.top + lineHeight;
               }
               if(newY){
@@ -3868,7 +4088,7 @@ function Ace2Inner(){
       }
 
       // Is part of multi-keystroke international character on Firefox Mac
-      var isFirefoxHalfCharacter = (browser.mozilla && evt.altKey && charCode === 0 && keyCode === 0);
+      var isFirefoxHalfCharacter = (browser.firefox && evt.altKey && charCode === 0 && keyCode === 0);
 
       // Is part of multi-keystroke international character on Safari Mac
       var isSafariHalfCharacter = (browser.safari && evt.altKey && keyCode == 229);
@@ -3950,6 +4170,7 @@ function Ace2Inner(){
     selection.focusAtStart = !! rep.selFocusAtStart;
     setSelection(selection);
   }
+  editorInfo.ace_updateBrowserSelectionFromRep = updateBrowserSelectionFromRep;
 
   function nodeMaxIndex(nd)
   {
@@ -4182,12 +4403,6 @@ function Ace2Inner(){
         end.collapse(false);
         selection.startPoint = pointFromCollapsedRange(start);
         selection.endPoint = pointFromCollapsedRange(end);
-/*if ((!selection.startPoint.node.isText) && (!selection.endPoint.node.isText)) {
-  console.log(selection.startPoint.node.uniqueId()+","+
-    selection.startPoint.index+" / "+
-    selection.endPoint.node.uniqueId()+","+
-    selection.endPoint.index);
-	}*/
       }
       return selection;
     }
@@ -4599,7 +4814,7 @@ function Ace2Inner(){
       setIfNecessary(iframe.style, "width", newWidth + "px");
       setIfNecessary(sideDiv.style, "height", newHeight + "px");
     }
-    if (browser.mozilla)
+    if (browser.firefox)
     {
       if (!doesWrap)
       {
@@ -4770,14 +4985,53 @@ function Ace2Inner(){
     $(document).on("keypress", handleKeyEvent);
     $(document).on("keyup", handleKeyEvent);
     $(document).on("click", handleClick);
+    // Disabled: https://github.com/ether/etherpad-lite/issues/2546
+    // Will break OL re-numbering: https://github.com/ether/etherpad-lite/pull/2533
+    // $(document).on("cut", handleCut);
+
     $(root).on("blur", handleBlur);
     if (browser.msie)
     {
       $(document).on("click", handleIEOuterClick);
     }
     if (browser.msie) $(root).on("paste", handleIEPaste);
+
+    // Don't paste on middle click of links
+    $(root).on("paste", function(e){
+      // TODO: this breaks pasting strings into URLS when using
+      // Control C and Control V -- the Event is never available
+      // here.. :(
+      if(e.target.a || e.target.localName === "a"){
+        e.preventDefault();
+      }
+
+      // Call paste hook
+      hooks.callAll('acePaste', {
+        editorInfo: editorInfo,
+        rep: rep,
+        documentAttributeManager: documentAttributeManager,
+        e: e
+      });
+    })
+
+    // We reference document here, this is because if we don't this will expose a bug
+    // in Google Chrome.  This bug will cause the last character on the last line to
+    // not fire an event when dropped into..
+    $(document).on("drop", function(e){
+      if(e.target.a || e.target.localName === "a"){
+        e.preventDefault();
+      }
+      // Call drop hook
+      hooks.callAll('aceDrop', {
+        editorInfo: editorInfo,
+        rep: rep,
+        documentAttributeManager: documentAttributeManager,
+        e: e
+      });
+    });
+
     // CompositionEvent is not implemented below IE version 8
-    if ( !(browser.msie && browser.version < 9) && document.documentElement)
+    if ( !(browser.msie && parseInt(browser.version <= 9)) && document.documentElement)
     {
       $(document.documentElement).on("compositionstart", handleCompositionEvent);
       $(document.documentElement).on("compositionend", handleCompositionEvent);
@@ -4831,54 +5085,6 @@ function Ace2Inner(){
   {
     if (present) $(elem).addClass(className);
     else $(elem).removeClass(className);
-  }
-
-  function setup()
-  {
-    doc = document; // defined as a var in scope outside
-    inCallStackIfNecessary("setup", function()
-    {
-      var body = doc.getElementById("innerdocbody");
-      root = body; // defined as a var in scope outside
-      if (browser.mozilla) addClass(root, "mozilla");
-      if (browser.safari) addClass(root, "safari");
-      if (browser.msie) addClass(root, "msie");
-      if (browser.msie)
-      {
-        // cache CSS background images
-        try
-        {
-          doc.execCommand("BackgroundImageCache", false, true);
-        }
-        catch (e)
-        { /* throws an error in some IE 6 but not others! */
-        }
-      }
-      setClassPresence(root, "authorColors", true);
-      setClassPresence(root, "doesWrap", doesWrap);
-
-      initDynamicCSS();
-
-      enforceEditability();
-
-      // set up dom and rep
-      while (root.firstChild) root.removeChild(root.firstChild);
-      var oneEntry = createDomLineEntry("");
-      doRepLineSplice(0, rep.lines.length(), [oneEntry]);
-      insertDomLines(null, [oneEntry.domInfo], null);
-      rep.alines = Changeset.splitAttributionLines(
-      Changeset.makeAttribution("\n"), "\n");
-
-      bindTheEventHandlers();
-
-    });
-
-    scheduler.setTimeout(function()
-    {
-      parent.readyFunc(); // defined in code that sets up the inner iframe
-    }, 0);
-
-    isSetUp = true;
   }
 
   function focus()
@@ -5042,6 +5248,7 @@ function Ace2Inner(){
   {
     if(listType == ''){
       documentAttributeManager.removeAttributeOnLine(lineNum, listAttributeName);
+      documentAttributeManager.removeAttributeOnLine(lineNum, 'start');
     }else{
       documentAttributeManager.setAttributeOnLine(lineNum, listAttributeName, listType);
     }
@@ -5063,7 +5270,7 @@ function Ace2Inner(){
     {
       return null;
     }
-    type = /([a-z]+)[12345678]/.exec(type);
+    type = /([a-z]+)[0-9]+/.exec(type);
     if(type[1] == "indent")
     {
       return null;
@@ -5072,7 +5279,7 @@ function Ace2Inner(){
     //2-find the first line of the list
     while(lineNum-1 >= 0 && (type=getLineListType(lineNum-1)))
     {
-      type = /([a-z]+)[12345678]/.exec(type);
+      type = /([a-z]+)[0-9]+/.exec(type);
       if(type[1] == "indent")
         break;
       lineNum--;
@@ -5081,7 +5288,7 @@ function Ace2Inner(){
     //3-renumber every list item of the same level from the beginning, level 1
     //IMPORTANT: never skip a level because there imbrication may be arbitrary
     var builder = Changeset.builder(rep.lines.totalWidth());
-    loc = [0,0];
+    var loc = [0,0];
     function applyNumberList(line, level)
     {
       //init
@@ -5092,7 +5299,7 @@ function Ace2Inner(){
       while(listType = getLineListType(line))
       {
         //apply new num
-        listType = /([a-z]+)([12345678])/.exec(listType);
+        listType = /([a-z]+)([0-9]+)/.exec(listType);
         curLevel = Number(listType[2]);
         if(isNaN(curLevel) || listType[0] == "indent")
         {
@@ -5160,13 +5367,19 @@ function Ace2Inner(){
     {
       var t = '';
       var level = 0;
-      var listType = /([a-z]+)([12345678])/.exec(getLineListType(n));
+      var listType = /([a-z]+)([0-9]+)/.exec(getLineListType(n));
       if (listType)
       {
         t = listType[1];
         level = Number(listType[2]);
       }
       var t = getLineListType(n);
+
+      // if already a list, deindent
+      if (allLinesAreList && level != 1) { level = level - 1;  }
+      // if already indented, then add a level of indentation to the list
+      else if (t && !allLinesAreList) { level = level + 1; }
+
       mods.push([n, allLinesAreList ? 'indent' + level : (t ? type + level : type + '1')]);
     }
 
@@ -5190,8 +5403,9 @@ function Ace2Inner(){
   function initLineNumbers()
   {
     lineNumbersShown = 1;
-    sideDiv.innerHTML = '<table border="0" cellpadding="0" cellspacing="0" align="right"><tr><td id="sidedivinner"><div>1</div></td></tr></table>';
+    sideDiv.innerHTML = '<table border="0" cellpadding="0" cellspacing="0" align="right"><tr><td id="sidedivinner" class="sidedivinner"><div>1</div></td></tr></table>';
     sideDivInner = outerWin.document.getElementById("sidedivinner");
+    $(sideDiv).addClass("sidediv");
   }
 
   function updateLineNumbers()
@@ -5255,7 +5469,7 @@ function Ace2Inner(){
 
         if(h){ // apply style to div
           div.style.height = h +"px";
-	}
+        }
 
         div.appendChild(odoc.createTextNode(String(n)));
         fragment.appendChild(div);
@@ -5287,20 +5501,9 @@ function Ace2Inner(){
       {
         var body = doc.getElementById("innerdocbody");
         root = body; // defined as a var in scope outside
-        if (browser.mozilla) $(root).addClass("mozilla");
+        if (browser.firefox) $(root).addClass("mozilla");
         if (browser.safari) $(root).addClass("safari");
         if (browser.msie) $(root).addClass("msie");
-        if (browser.msie)
-        {
-          // cache CSS background images
-          try
-          {
-            doc.execCommand("BackgroundImageCache", false, true);
-          }
-          catch (e)
-          { /* throws an error in some IE 6 but not others! */
-          }
-        }
         setClassPresence(root, "authorColors", true);
         setClassPresence(root, "doesWrap", doesWrap);
 

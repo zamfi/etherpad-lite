@@ -23,9 +23,14 @@
 
 var log4js = require('log4js')
   , async = require('async')
+  , stats = require('./stats')
   ;
 
 log4js.replaceConsole();
+
+stats.gauge('memoryUsage', function() {
+  return process.memoryUsage().rss
+})
 
 var settings
   , db
@@ -40,7 +45,7 @@ async.waterfall([
       callback(er)
     })
   },
-  
+
   // load everything
   function(callback) {
     settings = require('./utils/Settings');
@@ -48,10 +53,9 @@ async.waterfall([
     plugins = require("ep_etherpad-lite/static/js/pluginfw/plugins");
     hooks = require("ep_etherpad-lite/static/js/pluginfw/hooks");
     hooks.plugins = plugins;
-
     callback();
   },
-  
+
   //initalize the database
   function (callback)
   {
@@ -63,13 +67,12 @@ async.waterfall([
   },
 
   function (callback) {
-    console.info("Installed plugins: " + plugins.formatPlugins());
+    console.info("Installed plugins: " + plugins.formatPluginsWithVersion());
     console.debug("Installed parts:\n" + plugins.formatParts());
     console.debug("Installed hooks:\n" + plugins.formatHooks());
 
     // Call loadSettings hook
     hooks.aCallAll("loadSettings", { settings: settings });
-
     callback();
   },
 
@@ -77,6 +80,6 @@ async.waterfall([
   function (callback)
   {
     hooks.callAll("createServer", {});
-    callback(null);  
+    callback(null);
   }
 ]);
